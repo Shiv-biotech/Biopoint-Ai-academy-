@@ -1,0 +1,246 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Platform</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/babel-standalone@7.22.9/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const App = () => {
+            const [searchQuery, setSearchQuery] = useState('');
+            const [generatedNote, setGeneratedNote] = useState('');
+            const [uploadedFiles, setUploadedFiles] = useState([]);
+            const [fileContents, setFileContents] = useState({});
+            const [jobs, setJobs] = useState([]);
+            const [internships, setInternships] = useState([]);
+            const [imageUrl, setImageUrl] = useState('');
+
+            // Handle file upload and read content
+            const handleFileUpload = (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const content = e.target.result;
+                        setUploadedFiles([...uploadedFiles, file.name]);
+                        setFileContents({ ...fileContents, [file.name]: content });
+                    };
+                    reader.readAsText(file); // Reads file as text
+                }
+            };
+
+            // Handle search and answer generation
+            const handleSearch = async () => {
+                if (!searchQuery) return;
+
+                let note = '';
+                let foundInFile = false;
+
+                // Search through uploaded files for the query
+                for (const [fileName, content] of Object.entries(fileContents)) {
+                    if (content.toLowerCase().includes(searchQuery.toLowerCase())) {
+                        note = `Answer from ${fileName}: Relevant content found for "${searchQuery}". [Extracted content: ${content.slice(0, 100)}...]`;
+                        foundInFile = true;
+                        break;
+                    }
+                }
+
+                // If not found in files, use AI (Grok) placeholder
+                if (!foundInFile) {
+                    note = `Topic "${searchQuery}" not found in uploaded books. AI-generated note: This is a detailed explanation based on deep research. [Integrate with Grok API for real content].`;
+                }
+
+                setGeneratedNote(note);
+                // Placeholder for image generation API
+                setImageUrl('https://via.placeholder.com/300?text=Generated+Image');
+            };
+
+            // Copy to clipboard
+            const copyToClipboard = () => {
+                navigator.clipboard.writeText(generatedNote);
+                alert('Note copied to clipboard!');
+            };
+
+            // Download note as text file
+            const downloadNote = () => {
+                const blob = new Blob([generatedNote], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'generated_note.txt';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // Handle job/internship submission
+            const handleJobSubmit = (type, title) => {
+                if (type === 'job') {
+                    setJobs([...jobs, title]);
+                } else {
+                    setInternships([...internships, title]);
+                }
+            };
+
+            return (
+                <div className="container mx-auto p-4">
+                    <h1 className="text-3xl font-bold mb-4">Educational Platform</h1>
+
+                    {/* Search Section */}
+                    <div className="mb-6">
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search topic or question..."
+                            className="border p-2 w-full mb-2"
+                        />
+                        <button
+                            onClick={handleSearch}
+                            className="bg-blue-500 text-white p-2 rounded"
+                        >
+                            Generate Answer
+                        </button>
+                    </div>
+
+                    {/* Generated Answer */}
+                    {generatedNote && (
+                        <div className="mb-6 p-4 border rounded">
+                            <h2 className="text-xl font-semibold">Generated Answer</h2>
+                            <p>{generatedNote}</p>
+                            {imageUrl && (
+                                <div>
+                                    <img src={imageUrl} alt="Generated" className="my-2" />
+                                    <p className="text-sm">Image Credit: AI-generated</p>
+                                </div>
+                            )}
+                            <button
+                                onClick={copyToClipboard}
+                                className="bg-green-500 text-white p-2 rounded mr-2"
+                            >
+                                Copy Answer
+                            </button>
+                            <button
+                                onClick={downloadNote}
+                                className="bg-blue-500 text-white p-2 rounded"
+                            >
+                                Download Answer
+                            </button>
+                        </div>
+                    )}
+
+                    {/* File Upload */}
+                    <div className="mb-6">
+                        <h2 className="text-xl font-semibold">Upload Book/Note</h2>
+                        <input
+                            type="file"
+                            onChange={handleFileUpload}
+                            className="border p-2"
+                            accept=".txt"
+                        />
+                        <p className="text-sm text-gray-500">Upload text files for now (PDF support requires additional setup).</p>
+                        <ul className="mt-2">
+                            {uploadedFiles.map((file, index) => (
+                                <li key={index} className="text-sm">{file}</li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    {/* Job/Internship Submission */}
+                    <div className="mb-6">
+                        <h2 className="text-xl font-semibold">Post Job/Internship</h2>
+                        <input
+                            type="text"
+                            id="jobTitle"
+                            placeholder="Enter job title"
+                            className="border p-2 w-full mb-2"
+                        />
+                        <button
+                            onClick={() => handleJobSubmit('job', document.getElementById('jobTitle').value)}
+                            className="bg-blue-500 text-white p-2 rounded mr-2"
+                        >
+                            Post Job
+                        </button>
+                        <input
+                            type="text"
+                            id="internshipTitle"
+                            placeholder="Enter internship title"
+                            className="border p-2 w-full mb-2"
+                        />
+                        <button
+                            onClick={() => handleJobSubmit('internship', document.getElementById('internshipTitle').value)}
+                            className="bg-blue-500 text-white p-2 rounded"
+                        >
+                            Post Internship
+                        </button>
+                    </div>
+
+                    {/* Job/Internship Listings */}
+                    <div className="mb-6">
+                        <h2 className="text-xl font-semibold">Available Jobs</h2>
+                        <ul>
+                            {jobs.map((job, index) => (
+                                <li key={index} className="text-sm">{job}</li>
+                            ))}
+                        </ul>
+                        <h2 className="text-xl font-semibold mt-4">Available Internships</h2>
+                        <ul>
+                            {internships.map((internship, index) => (
+                                <li key={index} className="text-sm">{internship}</li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
